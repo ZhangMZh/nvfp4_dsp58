@@ -17,6 +17,20 @@ proc dot16_implement {output period} {
     report_drc -file $output/drc.rpt
     check_timing -verbose -file $output/check_timing.rpt
     write_checkpoint -force $output/routed.dcp
+    set f [open $output/route.rpt r]
+    set route_status [read $f]
+    close $f
+    foreach {label variable} {
+        {routable nets} routable {fully routed nets} routed {nets with routing errors} errors
+    } {
+        set pattern [format {# of %s[. ]*:\s*([0-9]+)} $label]
+        if {![regexp $pattern $route_status -> $variable]} {
+            error "Missing route-status field: $label"
+        }
+    }
+    if {$routable == 0 || $routed != $routable || $errors != 0} {
+        error "Incomplete routing"
+    }
     dot16_audit $output $period
 }
 
@@ -62,33 +76,14 @@ proc dot16_audit {output period} {
             }
         }
         set opmode [dot16_constant $cell OPMODE 9]
-        if {$opmode != ($index == 0 ? 0x185 : 0x195)} {
+        if {$opmode != 0x185} {
             error "$cell: unexpected OPMODE $opmode"
         }
         if {[dot16_constant $cell ALUMODE 4] || [dot16_constant $cell CARRYINSEL 3]} {
             error "Unexpected adder control"
         }
-        if {$index == 0} {
-            if {[dot16_constant $cell PCIN 58]} {
-                error "First PCIN is not zero"
-            }
-        } else {
-            set previous [lindex $dsps [expr {$index - 1}]]
-            for {set bit 0} {$bit < 58} {incr bit} {
-                set input [get_pins [format {%s/PCIN[%d]} $cell $bit]]
-                set output_pin [get_pins [format {%s/PCOUT[%d]} $previous $bit]]
-                set input_nets [get_nets -segments -of_objects $input]
-                set output_nets [get_nets -segments -of_objects $output_pin]
-                set linked 0
-                foreach net $input_nets {
-                    if {$net in $output_nets} {
-                        set linked 1
-                    }
-                }
-                if {!$linked} {
-                    error "PCOUT->PCIN cascade disconnected at stage $index bit $bit"
-                }
-            }
+        if {[dot16_constant $cell PCIN 58]} {
+            error "$cell: PCIN must be zero"
         }
         puts $structure "$index\t$cell\t[get_property LOC $cell]\t[format 0x%03x $opmode]"
         incr index
@@ -98,7 +93,7 @@ proc dot16_audit {output period} {
     puts $metrics "period_ns\t$period"
     puts $metrics "DSP58\t[llength $dsps]"
     set utilization [report_utilization -return_string]
-    if {![regexp {\| CLB LUTs +\| +([0-9]+)} $utilization -> luts]} {
+    if {![regexp {\| CLB LUTs\*? +\| +([0-9]+)} $utilization -> luts]} {
         error "Missing physical LUT count"
     }
     puts $metrics "LUT\t$luts"

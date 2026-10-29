@@ -17,7 +17,7 @@ inline block_pair pack(ap_uint<64> a, ap_uint<64> b) {
 } // namespace nvfp4
 
 // One call consumes one block pair and produces the exact, unscaled Q.
-// Synthesized as the supplied RTL blackbox, with II=1 and six-cycle latency.
+// Synthesized as the supplied RTL blackbox, with II=1 and two-cycle latency.
 void nvfp4_dot16_rtl(hls::stream<nvfp4::block_pair> &input, hls::stream<nvfp4::dot_result> &output);
 
 // Free-running AXI4-Stream integration example.

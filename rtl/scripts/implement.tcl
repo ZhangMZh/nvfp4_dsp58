@@ -1,18 +1,24 @@
 # SPDX-License-Identifier: MIT
-lassign $argv source top output part period
-set source [file normalize $source]
+lassign $argv root output part period scope
+set root [file normalize $root]
 set output [file normalize $output]
 file mkdir $output
 set_param general.maxThreads 4
 create_project -in_memory -part $part
-foreach file [glob -nocomplain $source/*.sv] {
-    read_verilog -sv $file
-}
-foreach file [glob -nocomplain $source/*.v] {
-    read_verilog $file
+read_verilog -sv [glob $root/rtl/src/*.sv]
+set fixture [expr {$scope eq "integration"}]
+set top nvfp4_dot16_axis
+if {$fixture} {
+    read_verilog -sv $root/rtl/tb/nvfp4_dot16_fixture.sv
+    set top nvfp4_dot16_fixture
+} elseif {$scope ne "internal"} {
+    error "Unknown implementation scope: $scope"
 }
 synth_design -top $top -part $part -mode out_of_context
-source [file join [file dirname [info script]] physical.tcl]
+source $root/rtl/scripts/physical.tcl
 dot16_implement $output $period
+if {$fixture} {
+    source $root/rtl/scripts/check_interfaces.tcl
+}
 puts "DOT16_FLOW_PASS"
 exit

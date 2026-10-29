@@ -53,7 +53,7 @@ if {$mode eq "ip"} {
         }
         proc $procname $args [string map [list $old {set filepath_args [list "-quiet" "-filepaths" "absolute"]}] $body]
     }
-    export_design -format ip_catalog -rtl verilog -vendor nvfp4.org -library hls -version 1.0
+    export_design -format ip_catalog -rtl verilog -vendor nvfp4.org -library hls
 }
 puts "DOT16_FLOW_PASS"
 exit

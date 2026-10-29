@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 `timescale 1ns/1ps
 // Exact sum of 16 q(a)*q(b), where q(E2M1) = 2*E2M1.
-// Six enabled register stages. CE freezes both the data and valid pipelines.
+// Two enabled register stages; the output adder is combinational.
+// CE freezes all DSP results and valid, holding the output under backpressure.
 module nvfp4_dot16 (
     input wire clk,
     input wire rst,
@@ -108,18 +109,15 @@ module nvfp4_dot16 (
         end
     endfunction
 
-    (* shreg_extract = "no" *) reg [5:0] valid_pipe;
+    (* shreg_extract = "no" *) reg [1:0] valid_pipe;
     always @(posedge clk) begin
         if (rst)
-            valid_pipe <= 6'b0;
+            valid_pipe <= 2'b0;
         else if (ce)
-            valid_pipe <= {valid_pipe[4:0], in_valid};
+            valid_pipe <= {valid_pipe[0], in_valid};
     end
-    assign out_valid = valid_pipe[5];
-    wire [57:0] cascade[0:4];
+    assign out_valid = valid_pipe[1];
     wire [57:0] result[0:3];
-    assign cascade[0] = 58'b0;
-    assign out_data = result[3][12:0];
 
     for (genvar g = 0; g < 4; g = g + 1) begin : groups
         wire [15:0] a = in_data[g * 16 +: 16];
@@ -127,41 +125,21 @@ module nvfp4_dot16 (
         wire [7:0] mag = magnitude_product({a[14:12], b[14:12]});
         wire sign4 = a[15] ^ b[15];
         wire [8:0] complement = {1'b0, mag} ^ {9{sign4}};
-        wire [39:0] decoded = {
-            sign4, complement,
-            decode(b[11:8]), decode(a[11:8]),
-            decode(b[7:4]), decode(a[7:4]),
-            decode(b[3:0]), decode(a[3:0])
-        };
-        // One decode register, then g alignment registers for the PCIN chain.
-        // Preserve FFs so routing can repair hold paths in the V80 configuration.
-        (* shreg_extract = "no" *) reg [39:0] delay_pipe[0:g];
-        integer j;
-        always @(posedge clk) begin
-            if (rst) begin
-                for (j = 0; j <= g; j = j + 1)
-                    delay_pipe[j] <= 40'b0;
-            end else if (ce) begin
-                delay_pipe[0] <= decoded;
-                for (j = 1; j <= g; j = j + 1)
-                    delay_pipe[j] <= delay_pipe[j - 1];
-            end
-        end
         wire [26:0] a_port;
         wire [23:0] b_port;
         for (genvar k = 0; k < 3; k = k + 1) begin : terms
-            wire [4:0] av = delay_pipe[g][k * 10 +: 5];
-            wire [4:0] bv = delay_pipe[g][k * 10 + 5 +: 5];
+            wire [4:0] av = decode(a[k * 4 +: 4]);
+            wire [4:0] bv = decode(b[k * 4 +: 4]);
             assign a_port[k * 9 +: 9] = {{4{av[4]}}, av};
             assign b_port[k * 8 +: 8] = {{3{bv[4]}}, bv};
         end
-        // Keep C/sign in fabric for hold repair, aligned with AREG/BREG.
+        // Fabric placement permits hold repair; aligned with DSP AREG/BREG.
         (* dont_touch = "yes" *) reg [9:0] fourth_pipe;
         always @(posedge clk) begin
             if (rst)
                 fourth_pipe <= 10'b0;
             else if (ce)
-                fourth_pipe <= delay_pipe[g][39:30];
+                fourth_pipe <= {sign4, complement};
         end
         wire [8:0] c_small = fourth_pipe[8:0];
         DSP58 #(
@@ -187,10 +165,10 @@ module nvfp4_dot16 (
             .B(b_port),
             .C({{49{c_small[8]}}, c_small}),
             .D(27'b0),
-            .PCIN(cascade[g]),
-            .PCOUT(cascade[g + 1]),
+            .PCIN(58'b0),
+            .PCOUT(),
             .P(result[g]),
-            .OPMODE(g == 0 ? 9'h185 : 9'h195),
+            .OPMODE(9'h185),
             .ALUMODE(4'b0),
             .INMODE(5'b0),
             .NEGATE(3'b0),
@@ -226,4 +204,15 @@ module nvfp4_dot16 (
             .ASYNC_RST(1'b0)
         );
     end
+
+    // Four-term sums fit signed 11 bits; pair sums fit 12, and Q fits 13.
+    wire signed [10:0] s0 = result[0][10:0];
+    wire signed [10:0] s1 = result[1][10:0];
+    wire signed [10:0] s2 = result[2][10:0];
+    wire signed [10:0] s3 = result[3][10:0];
+    (* use_dsp = "no" *) wire signed [11:0] pair_left = {s0[10], s0} + {s1[10], s1};
+    (* use_dsp = "no" *) wire signed [11:0] pair_right = {s2[10], s2} + {s3[10], s3};
+    (* use_dsp = "no" *) wire signed [12:0] total =
+        {pair_left[11], pair_left} + {pair_right[11], pair_right};
+    assign out_data = total;
 endmodule

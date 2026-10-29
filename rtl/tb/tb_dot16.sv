@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 `timescale 1ns/1ps
-module tb_dot16;
+module tb_dot16 #(
+    parameter integer CORE_LATENCY = 2
+);
     reg clk = 0;
     always #1.666666 clk = ~clk;
     reg rst = 1, ce = 1;
@@ -32,7 +34,11 @@ module tb_dot16;
         .output_write(valid_out)
     );
 `else
+`ifdef TEST_INTEGRATION
+    nvfp4_dot16_fixture dut (
+`else
     nvfp4_dot16_axis dut (
+`endif
         .ap_clk(clk),
         .ap_rst(rst),
         .s_axis_tdata(data_in),
@@ -91,6 +97,10 @@ module tb_dot16;
                 head = 0;
                 tail = 0;
             end else begin
+`ifdef TEST_FIFO
+                if (!ce && (ready_in || valid_out))
+                    $fatal(1, "FIFO transfer while ap_ce is low");
+`endif
 `ifndef TEST_FIFO
                 if (held) begin
                     stall_checks = stall_checks + 1;
@@ -111,7 +121,7 @@ module tb_dot16;
                         if (latency < 0)
                             latency = cycle - accepted_at[head];
 `else
-                        latency = 6;
+                        latency = CORE_LATENCY;
 `endif
                         if (cycle - accepted_at[head] != latency)
                             $fatal(1, "Unexpected steady latency");

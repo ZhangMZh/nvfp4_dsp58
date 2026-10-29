@@ -14,13 +14,14 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 from reference import write_vectors  # noqa: E402
 
-DOC_FILES = ("LICENSE", "README.md", "README.zh-CN.md")
+DOC_FILES = ("LICENSE", "README.md")
 SOURCE_DIRS = ("rtl", "hls", "tests", "scripts")
 DIST_FILES = ("Makefile", ".gitignore", ".clang-format", "AGENTS.md", *DOC_FILES)
 
@@ -68,11 +69,15 @@ def sources(task):
         paths.add(ROOT / "tests/reference.py")
     if task in ("rtl-sim", "hls-cosim"):
         paths.add(ROOT / "rtl/tb/tb_dot16.sv")
+    if task in ("rtl-sim", "rtl-impl"):
+        paths.add(ROOT / "rtl/tb/nvfp4_dot16_fixture.sv")
     if task.startswith("hls-"):
         paths.update(p for p in (ROOT / "hls").rglob("*") if p.is_file())
     if task in ("rtl-impl", "ip-check"):
         paths.add(ROOT / "rtl/scripts/physical.tcl")
         paths.add(ROOT / "rtl/scripts" / ("implement.tcl" if task == "rtl-impl" else "check_ip.tcl"))
+    if task == "rtl-impl":
+        paths.add(ROOT / "rtl/scripts/check_interfaces.tcl")
     if task == "rtl-ip":
         paths.add(ROOT / "rtl/scripts/package.tcl")
     if task in ("rtl-ip", "hls-ip", "dist"):
@@ -103,7 +108,7 @@ def vivado_root():
 def rtl_sim(work, hls_rtl=None):
     count = write_vectors(work / "vectors.mem")
     vivado = vivado_root()
-    for kind in ("hls",) if hls_rtl else ("axis", "fifo"):
+    for kind in ("hls",) if hls_rtl else ("axis", "fifo", "integration"):
         sim = work / kind
         sim.mkdir(exist_ok=True)
         files = (
@@ -112,6 +117,9 @@ def rtl_sim(work, hls_rtl=None):
             else sorted((ROOT / "rtl/src").glob("*.sv"))
         )
         defines = ["-d", "TEST_HLS"] if kind == "hls" else (["-d", "TEST_FIFO"] if kind == "fifo" else [])
+        if kind == "integration":
+            files.append(ROOT / "rtl/tb/nvfp4_dot16_fixture.sv")
+            defines = ["-d", "TEST_INTEGRATION"]
         run(
             [
                 "xvlog",
@@ -124,7 +132,23 @@ def rtl_sim(work, hls_rtl=None):
             sim,
             "compile",
         )
-        run(["xelab", "tb_dot16", "glbl", "-L", "unisims_ver", "-s", "sim", "-mt", "2"], sim, "elaborate")
+        run(
+            [
+                "xelab",
+                "tb_dot16",
+                "glbl",
+                "-L",
+                "unisims_ver",
+                "-s",
+                "sim",
+                "-mt",
+                "2",
+                "-generic_top",
+                f"CORE_LATENCY={4 if kind == 'integration' else 2}",
+            ],
+            sim,
+            "elaborate",
+        )
         run(
             [
                 "xsim",
@@ -180,8 +204,8 @@ def hls_run(work, mode, part, period):
             "ap_ctrl_chain_protocol_done": "",
             "ap_ctrl_chain_protocol_continue": "",
         },
-        "rtl_performance": {"latency": "6", "II": "1"},
-        "rtl_resource_usage": {"FF": "436", "LUT": "120", "BRAM": "0", "URAM": "0", "DSP": "4"},
+        "rtl_performance": {"latency": "2", "II": "1"},
+        "rtl_resource_usage": {"FF": "42", "LUT": "146", "BRAM": "0", "URAM": "0", "DSP": "4"},
     }
     # FF/LUT estimates come from isolated implementation plus FIFO control.
     # Actual routed utilization remains authoritative for each integration.
@@ -312,13 +336,20 @@ def main():
         elif args.task == "rtl-sim":
             rtl_sim(work)
         elif args.task == "rtl-impl":
-            tcl_run(
-                ROOT / "rtl/scripts/implement.tcl",
-                [ROOT / "rtl/src", "nvfp4_dot16_axis", work, args.part, args.period],
-                work,
-                "vivado",
-                "implement",
-            )
+
+            def implement(scope):
+                out = work / scope
+                out.mkdir(exist_ok=True)
+                tcl_run(
+                    ROOT / "rtl/scripts/implement.tcl",
+                    [ROOT, out, args.part, args.period, scope],
+                    out,
+                    "vivado",
+                    "implement",
+                )
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                list(pool.map(implement, ("internal", "integration")))
         elif args.task == "rtl-ip":
             tcl_run(
                 ROOT / "rtl/scripts/package.tcl",

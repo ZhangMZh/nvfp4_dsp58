@@ -39,7 +39,7 @@ class BuildTests(unittest.TestCase):
             archive = Path(directory) / "ip.zip"
             runner.package_docs(archive)
             with zipfile.ZipFile(archive) as package:
-                self.assertEqual(set(package.namelist()), {"LICENSE", "README.md", "README.zh-CN.md"})
+                self.assertEqual(set(package.namelist()), {"LICENSE", "README.md"})
                 for name in package.namelist():
                     self.assertEqual(package.read(name), (ROOT / name).read_bytes())
 

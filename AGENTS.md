@@ -15,8 +15,8 @@ This project implements a 16-element E2M1 dot product using four Versal DSP58s. 
 Python 3.9+ suffices for reference tests. Hardware targets require a sourced, licensed Vivado/Vitis 2025.1 environment with UNISIM.
 
 - `make test`: run Python reference tests.
-- `make rtl-sim`: simulate native AXIS and FIFO interfaces.
-- `make rtl-impl`: route the RTL and check timing/resource constraints.
+- `make rtl-sim`: simulate native AXIS, FIFO and registered integration interfaces.
+- `make rtl-impl`: route standalone RTL and registered integration concurrently, checking timing/resources.
 - `make hls-csim`, `make hls-synth`, `make hls-cosim`: run HLS C simulation, synthesis, and co-simulation.
 - `make rtl-ip` / `make hls-ip`: export IP; then `make ip-check` validates relocated packages.
 - `make dist`: package distributable sources.
@@ -29,8 +29,8 @@ Use four-space indentation and descriptive `snake_case` names; retain `nvfp4_dot
 
 ## Testing Guidelines
 
-Python tests use `unittest`; name files `test_*.py` and methods `test_*`. Extend the independent oracle and relevant RTL/HLS scoreboards when behavior changes. Preserve exhaustive code-pair coverage at every position, signed-zero/extrema cases, and seeded random vectors. Interface changes must verify stalls, bubbles, reset, draining, six-cycle native latency, and II=1. No percentage coverage threshold is configured. Include relevant simulation and routed timing/resource evidence for hardware changes.
+Python tests use `unittest`; name files `test_*.py` and methods `test_*`. Extend the independent oracle and relevant RTL/HLS scoreboards when behavior changes. Preserve exhaustive code-pair coverage at every position, signed-zero/extrema cases, and seeded random vectors. Interface changes must verify stalls, bubbles, reset, draining, two-cycle native latency, and II=1. No percentage coverage threshold is configured. Include relevant simulation and routed timing/resource evidence for hardware changes.
 
 ## Commit & Pull Request Guidelines
 
-There is no commit history yet. Use concise imperative subjects, such as `Fix FIFO reset handling`. PRs should explain the change, link relevant issues, and list commands/results plus tool version, part, and clock for hardware checks. Update both README languages when public behavior changes. Exclude generated artifacts and proprietary AMD files.
+Use concise Conventional Commit subjects, such as `feat(rtl): promote two-cycle dot16 core`. PRs should explain the change, link relevant issues, and list commands/results plus tool version, part, and clock for hardware checks. Update README.md when public behavior changes. Exclude generated artifacts and proprietary AMD files.
