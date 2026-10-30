@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MIT
+include("${CONFIG}")
+include("${ROOT}/cmake/Archive.cmake")
+require_tool(VIVADO)
+file(GLOB hls_archives "${BUILD}/hls-ip/project/solution/impl/ip/*.zip")
+list(LENGTH hls_archives count)
+if(NOT count EQUAL 1)
+    message(FATAL_ERROR "Expected exactly one HLS IP archive, found ${count}")
+endif()
+set(rtl_archive "${BUILD}/rtl-ip/nvfp4_dot16_axis.zip")
+set(hls_archive "${hls_archives}")
+prepare_work("${BUILD}/ip-check")
+foreach(kind IN ITEMS rtl hls)
+    set(package "${BUILD}/ip-check/relocated/${kind}")
+    extract_package("${${kind}_archive}" "${package}")
+    set(work "${BUILD}/ip-check/${kind}")
+    file(MAKE_DIRECTORY "${work}")
+    run_tool("${work}" reimport DOT16_FLOW_PASS
+        "${VIVADO}" -mode batch -nojournal -source "${ROOT}/rtl/scripts/check_ip.tcl"
+        -tclargs "${ROOT}" "${package}" "${work}" "${PART}" "${CLOCK_NS}")
+endforeach()

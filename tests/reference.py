@@ -46,3 +46,13 @@ def write_vectors(path):
             out.write(f"{dot(a, b) & 0xFFFF:04x}{packet(a, b):032x}\n")
             count += 1
     return count
+
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Write independent dot16 golden vectors.")
+    parser.add_argument("output", type=Path)
+    args = parser.parse_args()
+    print(f"Wrote {write_vectors(args.output)} vectors to {args.output}")

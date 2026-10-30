@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# scripts/run.py supplies argv: root work part period mode.
+# CMake supplies argv: root work part period mode.
 lassign $argv root work part period mode
 set root [file normalize $root]
 set work [file normalize $work]

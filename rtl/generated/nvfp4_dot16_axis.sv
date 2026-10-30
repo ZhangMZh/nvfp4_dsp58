@@ -1,7 +1,7 @@
 // Generator : SpinalHDL v1.15.0    git head : 05a01af3d3345aa0afcaad8e0186dde13a359db2
 // Component : nvfp4_dot16_axis
 // SPDX-License-Identifier: MIT
-// Generated from rtl/spinal/; edit Scala and run make rtl-gen.
+// Generated from rtl/spinal/; edit Scala and run cmake --build <build-dir> --target rtl-gen.
 
 `timescale 1ns/1ps
 module nvfp4_dot16_axis (

@@ -1,0 +1,43 @@
+{
+    "c_function_name": "nvfp4_dot16_rtl",
+    "rtl_top_module_name": "nvfp4_dot16_rtl",
+    "c_files": [
+        {"c_file": "@ROOT@/hls/src/model.cpp", "cflag": "-std=c++14 -I@ROOT@/hls/include"}
+    ],
+    "rtl_files": [
+        "@ROOT@/rtl/generated/nvfp4_dot16.sv",
+        "@ROOT@/rtl/generated/nvfp4_dot16_rtl.sv"
+    ],
+    "c_parameters": [
+        {
+            "c_name": "input",
+            "c_port_direction": "in",
+            "rtl_ports": {
+                "FIFO_empty_flag": "input_empty_n",
+                "FIFO_read_enable": "input_read",
+                "FIFO_data_read_in": "input_dout"
+            }
+        },
+        {
+            "c_name": "output",
+            "c_port_direction": "out",
+            "rtl_ports": {
+                "FIFO_full_flag": "output_full_n",
+                "FIFO_write_enable": "output_write",
+                "FIFO_data_write_out": "output_din"
+            }
+        }
+    ],
+    "rtl_common_signal": {
+        "module_clock": "ap_clk",
+        "module_reset": "ap_rst",
+        "module_clock_enable": "ap_ce",
+        "ap_ctrl_chain_protocol_idle": "",
+        "ap_ctrl_chain_protocol_start": "",
+        "ap_ctrl_chain_protocol_ready": "",
+        "ap_ctrl_chain_protocol_done": "",
+        "ap_ctrl_chain_protocol_continue": ""
+    },
+    "rtl_performance": {"latency": "2", "II": "1"},
+    "rtl_resource_usage": {"FF": "42", "LUT": "149", "BRAM": "0", "URAM": "0", "DSP": "4"}
+}

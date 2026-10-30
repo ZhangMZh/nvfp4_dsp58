@@ -51,8 +51,14 @@ Its measured unstalled external latency is six clocks, with II=1.
 
 ## Build and validation
 
-Reference tests require Python 3.9+ and Make. Hardware flows require a configured,
-licensed Vivado/Vitis 2025.1 environment, GCC and UNISIM.
+CMake 3.20+ and Python 3.9+ are required; Ninja is the recommended build backend.
+Hardware flows require a configured, licensed Vivado/Vitis 2025.1 environment,
+GCC and UNISIM.
+
+```sh
+cmake -S . -B build/cmake -G Ninja
+ctest --test-dir build/cmake --output-on-failure
+```
 
 The maintained hardware source is SpinalHDL under `rtl/spinal/src/`. The three generated
 SystemVerilog modules are checked in under `rtl/generated/`, so simulation,
@@ -65,28 +71,37 @@ on first use. Install tools and configure any required network proxy externally.
 There is no separate smoke-test project or Verilator requirement.
 
 ```sh
-make rtl-gen SBT=/path/to/sbt    # update rtl/generated/*.sv
+cmake -S . -B build/cmake -DSBT=/path/to/sbt  # optional tool override
+cmake --build build/cmake --target rtl-gen  # update rtl/generated/*.sv
 ```
 
-`SBT` defaults to `sbt` on PATH. Generation logs stream to the terminal and are
-also saved under `BUILD_DIR`. No timestamp, local Git revision or absolute source
+`SBT` defaults to `sbt` on PATH. Tool logs are saved in each target's output
+directory; failures print the log tail. No timestamp, local Git revision or absolute source
 path is embedded in the generated HDL. The generator preserves the core's signed
 13-bit public output declaration, which Spinal otherwise emits as an unsigned
 vector with signed casts inside the module.
 
 ```sh
-make test
-make rtl-sim rtl-impl
-make hls-cosim
-make rtl-ip hls-ip
-make ip-check
-make dist
+cmake --build build/cmake --target rtl-sim --parallel 2
+cmake --build build/cmake --target rtl-impl --parallel 2
+cmake --build build/cmake --target hls-cosim
+cmake --build build/cmake --target ip-check --parallel 2
+cmake --build build/cmake --target dist
 ```
 
-Defaults: `BUILD_DIR=build`, `PART=xcv80-lsva4737-2MHP-e-S`,
-`CLOCK_NS=3.333333`. Use separate build directories per configuration; do not run
-the same target concurrently in one directory. Run only one `rtl-gen` at a time,
-and wait for it to finish before simulation, implementation or packaging.
+Select the build directory with `-B`. Cache defaults are
+`PART=xcv80-lsva4737-2MHP-e-S`, `CLOCK_NS=3.333333`; override them with
+`-DPART=... -DCLOCK_NS=...`. Tool paths can be overridden with `-DSBT=...`,
+`-DVIVADO=...`, `-DVITIS_RUN=...`, `-DXVLOG=...`, `-DXELAB=...`, `-DXSIM=...`
+and `-DVIVADO_ROOT=...`. Missing hardware tools fail only when the corresponding
+target is invoked; source the environment and reconfigure to discover them.
+
+Use separate build directories per configuration; do not run the same target
+concurrently in one directory. Hardware targets rerun when requested and replace
+their own previous tool outputs. The shared golden vectors regenerate only when
+the oracle changes. The default build does not start hardware flows.
+Run only one `rtl-gen` at a time, and wait for it to finish before simulation,
+implementation or packaging. Other targets never invoke Scala implicitly.
 `hls-cosim` includes C simulation,
 synthesis, random-stall co-simulation and independent generated-AXIS simulation.
 `hls-csim` and `hls-synth` are also available.
@@ -98,7 +113,7 @@ Direct-core tests additionally change inputs while CE is low and assert reset
 with CE low. Interface tests reset during backpressure, and the HLS AXIS test
 requires the six-cycle integration latency explicitly.
 
-`rtl-impl` routes two designs concurrently: `internal/` contains the standalone
+`rtl-impl --parallel 2` routes two designs concurrently: `internal/` contains the standalone
 core; `integration/` adds a two-slot registered FIFO at each AXIS boundary. The
 fixture adds two clocks and checks setup/hold through all six data/valid/ready
 ports, including the output sum. Standalone OOC excludes external paths and cannot
@@ -115,22 +130,27 @@ Routed utilization and measured unstalled handshake latency (all II=1):
 
 The FIFO rows include both fixture FIFOs and cover the output-adder path.
 Functional simulation, HLS C/RTL co-simulation and both physical checks passed.
-These hardware results were collected before the source-directory reorganization;
-reports remain under `build/spinal-acceptance/`.
+These results were reproduced through CMake 3.31.6 and Ninja 1.12.1 after the
+build migration. Reports and routed checkpoints are under
+`build/cmake-acceptance/rtl-impl/{internal,integration}/`; the integration report
+`interfaces.tsv` records setup/hold checks through all six core AXIS ports.
 
 ## Layout and packages
 
 - `rtl/spinal/src/`: maintained hardware descriptions; sbt configuration is in `rtl/spinal/`.
 - `rtl/generated/`: generated SystemVerilog; do not edit by hand.
 - `rtl/tb/`: independent scoreboards and integration fixture.
-- `rtl/scripts/`: Vivado implementation and IP packaging flows.
+- `CMakeLists.txt`, `rtl/CMakeLists.txt`, `hls/CMakeLists.txt`: common, RTL and HLS targets.
+- `cmake/`: shared tool execution, configuration and archive helpers.
+- `rtl/scripts/`: RTL generation, simulation, implementation and IP packaging flows.
 - `hls/{include,src,tb,scripts}`: C++ API/model/wrapper and Vitis flows.
-- `tests/`, `scripts/`: independent integer oracle, unit tests and build runner.
-- `build/`: generated reports, logs, artifacts and run results.
+- `tests/`: independent integer oracle, arithmetic unit tests and vector generation.
+- `build/`: CMake build trees, reports, logs and artifacts.
 
 IP archives are `rtl-ip/nvfp4_dot16_axis.zip` and
 `hls-ip/project/solution/impl/ip/*.zip` under
-`BUILD_DIR`. `ip-check` relocates both packages, verifies file references,
+the chosen CMake build directory. `rtl-ip` and `hls-ip` export the individual
+packages; `ip-check` builds both automatically, relocates them, verifies file references,
 then imports each through Vivado IP Catalog and checks its structure and
 internal OOC timing. Core interface timing is checked by `rtl-impl`.
 HLS export applies a process-local workaround for 2025.1 without changing

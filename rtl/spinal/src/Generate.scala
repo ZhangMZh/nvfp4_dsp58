@@ -8,7 +8,7 @@ object Generate {
     def main(args: Array[String]): Unit = {
         require(args.length == 1, "Usage: nvfp4.Generate OUTPUT_DIRECTORY")
         val output = Paths.get(args(0)).toAbsolutePath
-        val header = "SPDX-License-Identifier: MIT\nGenerated from rtl/spinal/; edit Scala and run make rtl-gen."
+        val header = "SPDX-License-Identifier: MIT\nGenerated from rtl/spinal/; edit Scala and run cmake --build <build-dir> --target rtl-gen."
         def config(directory: Path) = SpinalConfig(
             targetDirectory = directory.toString,
             oneFilePerComponent = true,

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+# Configured paths and parameters shared by build-time CMake scripts.
+cmake_minimum_required(VERSION 3.20)
+set(ROOT [==[@ROOT@]==])
+set(BUILD [==[@BUILD@]==])
+set(PART [==[@PART@]==])
+set(CLOCK_NS [==[@CLOCK_NS@]==])
+set(SBT [==[@SBT@]==])
+set(VIVADO [==[@VIVADO@]==])
+set(VIVADO_ROOT [==[@VIVADO_ROOT@]==])
+set(VITIS_RUN [==[@VITIS_RUN@]==])
+set(XVLOG [==[@XVLOG@]==])
+set(XELAB [==[@XELAB@]==])
+set(XSIM [==[@XSIM@]==])
+set(VECTORS "${BUILD}/tests/vectors.mem")
+include("${ROOT}/cmake/RunTool.cmake")

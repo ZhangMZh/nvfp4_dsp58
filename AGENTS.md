@@ -8,24 +8,26 @@ This project implements a 16-element E2M1 dot product using four Versal DSP58s. 
 - `rtl/generated/`: checked-in generated SystemVerilog; do not edit by hand. `rtl/tb/`: independent scoreboards; `rtl/scripts/`: implementation and IP packaging Tcl.
 - `hls/include/` and `hls/src/`: public C++ interface, arithmetic model, and DATAFLOW wrapper; `hls/tb/` and `hls/scripts/`: verification and Vitis flow.
 - `tests/`: independent Python integer oracle and unit tests.
-- `scripts/run.py`: shared command runner, vector generation, logs, and run results.
+- Root, `rtl/` and `hls/` CMakeLists define the build targets; `cmake/` contains shared execution and packaging helpers.
 - `build/`: generated artifacts, ignored by Git. Keep source changes outside this directory.
 
 ## Build, Test, and Development Commands
 
-Python 3.9+ suffices for reference tests. Hardware targets require a sourced, licensed Vivado/Vitis 2025.1 environment with UNISIM.
+CMake 3.20+ and Python 3.9+ are required. Configure with `cmake -S . -B build/cmake -G Ninja`. Hardware targets require a sourced, licensed Vivado/Vitis 2025.1 environment with UNISIM; source it before configuring.
 
-- `make test`: run Python reference tests.
-- `make rtl-gen`: generate and update the three checked-in RTL files.
-- `make rtl-sim`: simulate the direct core, native AXIS, FIFO and registered integration interfaces.
-- `make rtl-impl`: route standalone RTL and registered integration concurrently, checking timing/resources.
-- `make hls-csim`, `make hls-synth`, `make hls-cosim`: run HLS C simulation, synthesis, and co-simulation.
-- `make rtl-ip` / `make hls-ip`: export IP; then `make ip-check` validates relocated packages.
-- `make dist`: package distributable sources.
+Invoke the named targets below with `cmake --build build/cmake --target <target>`.
 
-Use separate configurations, for example `make rtl-impl BUILD_DIR=build/v80-300 CLOCK_NS=3.333333`. Never run the same target concurrently in the same build directory.
+- `ctest --test-dir build/cmake --output-on-failure`: run Python arithmetic tests.
+- `cmake --build build/cmake --target rtl-gen`: generate and update the three checked-in RTL files.
+- Target `rtl-sim`: simulate the direct core, native AXIS, FIFO and registered integration interfaces.
+- Target `rtl-impl --parallel 2`: route standalone RTL and registered integration concurrently, checking timing/resources.
+- Targets `hls-csim`, `hls-synth`, `hls-cosim`: run HLS C simulation, synthesis, and co-simulation.
+- Targets `rtl-ip` / `hls-ip`: export IP; `ip-check` builds both and validates relocated packages.
+- Target `dist`: package distributable sources.
+
+Use separate configurations, for example `cmake -S . -B build/v80-300 -G Ninja -DCLOCK_NS=3.333333`, then `cmake --build build/v80-300 --target rtl-impl --parallel 2`. Never run the same target concurrently in the same build directory. Hardware targets replace their own old outputs on each invocation; the default build does not run them.
 Generation requires JDK 21 and sbt 1.10.2; Scala 2.13.14 and SpinalHDL 1.15.0
-are pinned by the project. Set `SBT=/path/to/sbt` if needed. Other targets use
+are pinned by the project. Configure with `-DSBT=/path/to/sbt` if needed. Other targets use
 checked-in RTL without running Scala. Run `rtl-gen` after changing Scala sources;
 do not run it concurrently with another generation or RTL consumer.
 
