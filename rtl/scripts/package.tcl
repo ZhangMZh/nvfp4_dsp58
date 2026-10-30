@@ -5,7 +5,7 @@ set output [file normalize $output]
 set package $output/ip
 file mkdir $package/hdl
 foreach name {nvfp4_dot16 nvfp4_dot16_axis} {
-    file copy -force $root/rtl/src/$name.sv $package/hdl/$name.sv
+    file copy -force $root/rtl/generated/$name.sv $package/hdl/$name.sv
 }
 create_project -in_memory -part $part
 add_files [glob $package/hdl/*.sv]

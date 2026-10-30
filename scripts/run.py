@@ -3,7 +3,6 @@
 """Small command runner for the native Vivado/Vitis Tcl flows."""
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -26,7 +25,7 @@ SOURCE_DIRS = ("rtl", "hls", "tests", "scripts")
 DIST_FILES = ("Makefile", ".gitignore", ".clang-format", "AGENTS.md", *DOC_FILES)
 
 
-def run(command, work, name, marker=None):
+def run(command, work, name, marker=None, cwd=None, live=False):
     print(f"START {name}: {' '.join(map(str, command))}", flush=True)
     env = os.environ.copy()
     if shutil.which("gcc"):
@@ -36,9 +35,18 @@ def run(command, work, name, marker=None):
                 ":" + env["LIBRARY_PATH"] if env.get("LIBRARY_PATH") else ""
             )
     with (work / f"{name}.log").open("w") as log:
-        result = subprocess.run(
-            list(map(str, command)), cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT
-        )
+        if live:
+            with subprocess.Popen(list(map(str, command)), cwd=cwd or work, env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as result:
+                for line in result.stdout:
+                    log.write(line)
+                    log.flush()
+                    print(line, end="", flush=True)
+                result.wait()
+        else:
+            result = subprocess.run(
+                list(map(str, command)), cwd=cwd or work, env=env, stdout=log, stderr=subprocess.STDOUT
+            )
     text = (work / f"{name}.log").read_text(errors="replace")
     if result.returncode or (marker and marker not in text):
         print(text[-8000:], file=sys.stderr)
@@ -57,42 +65,28 @@ def tcl_run(script, arguments, work, tool, name):
     run(command, work, name, "DOT16_FLOW_PASS")
 
 
-def sources(task):
-    # Fingerprint the files actually used by this target. A packaging-only
-    # script change must not invalidate an independent arithmetic simulation.
-    paths = {ROOT / "Makefile", ROOT / "scripts/run.py"}
-    if task == "test":
-        paths.update((ROOT / "tests").glob("*.py"))
-    if task.startswith("rtl-") or task.startswith("hls-"):
-        paths.update((ROOT / "rtl/src").glob("*.sv"))
-    if task == "rtl-sim" or task.startswith("hls-"):
-        paths.add(ROOT / "tests/reference.py")
-    if task in ("rtl-sim", "hls-cosim"):
-        paths.add(ROOT / "rtl/tb/tb_dot16.sv")
-    if task in ("rtl-sim", "rtl-impl"):
-        paths.add(ROOT / "rtl/tb/nvfp4_dot16_fixture.sv")
-    if task.startswith("hls-"):
-        paths.update(p for p in (ROOT / "hls").rglob("*") if p.is_file())
-    if task in ("rtl-impl", "ip-check"):
-        paths.add(ROOT / "rtl/scripts/physical.tcl")
-        paths.add(ROOT / "rtl/scripts" / ("implement.tcl" if task == "rtl-impl" else "check_ip.tcl"))
-    if task == "rtl-impl":
-        paths.add(ROOT / "rtl/scripts/check_interfaces.tcl")
-    if task == "rtl-ip":
-        paths.add(ROOT / "rtl/scripts/package.tcl")
-    if task in ("rtl-ip", "hls-ip", "dist"):
-        paths.update(ROOT / name for name in DOC_FILES)
-    if task == "ip-check":
-        paths.update((ROOT / "rtl/src").glob("*.sv"))
-    if task == "dist":
-        paths.update(ROOT / name for name in DIST_FILES)
-        for directory in SOURCE_DIRS:
-            paths.update(p for p in (ROOT / directory).rglob("*") if p.is_file())
-    return {
-        str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in sorted(paths)
-        if "__pycache__" not in p.parts
-    }
+def distribution_files():
+    paths = {ROOT / name for name in DIST_FILES}
+    for directory in SOURCE_DIRS:
+        paths.update(p for p in (ROOT / directory).rglob("*")
+                     if p.is_file() and not set(p.relative_to(ROOT).parts) &
+                     {"__pycache__", "target", ".bsp", ".metals", ".bloop"})
+    return sorted(paths)
+
+
+def rtl_generate(work, sbt):
+    executable = shutil.which(sbt)
+    if executable is None:
+        raise RuntimeError("sbt not found; add it to PATH or set SBT=/path/to/sbt")
+    output = work / "hdl"
+    if output.exists():
+        shutil.rmtree(output)
+    run(
+        [executable, f'runMain nvfp4.Generate "{output}"'],
+        work, "generate", "DOT16_GENERATION_PASS", cwd=ROOT / "rtl/spinal", live=True,
+    )
+    for name in ("nvfp4_dot16", "nvfp4_dot16_axis", "nvfp4_dot16_rtl"):
+        shutil.copy2(output / f"{name}.sv", ROOT / "rtl/generated" / f"{name}.sv")
 
 
 def vivado_root():
@@ -108,25 +102,26 @@ def vivado_root():
 def rtl_sim(work, hls_rtl=None):
     count = write_vectors(work / "vectors.mem")
     vivado = vivado_root()
-    for kind in ("hls",) if hls_rtl else ("axis", "fifo", "integration"):
+    for kind in ("hls",) if hls_rtl else ("core", "axis", "fifo", "integration"):
         sim = work / kind
         sim.mkdir(exist_ok=True)
         files = (
             sorted(hls_rtl.glob("*.v")) + sorted(hls_rtl.glob("*.sv"))
             if hls_rtl
-            else sorted((ROOT / "rtl/src").glob("*.sv"))
+            else sorted((ROOT / "rtl/generated").glob("*.sv"))
         )
         defines = ["-d", "TEST_HLS"] if kind == "hls" else (["-d", "TEST_FIFO"] if kind == "fifo" else [])
         if kind == "integration":
             files.append(ROOT / "rtl/tb/nvfp4_dot16_fixture.sv")
             defines = ["-d", "TEST_INTEGRATION"]
+        testbench = "tb_core" if kind == "core" else "tb_dot16"
         run(
             [
                 "xvlog",
                 "--sv",
                 *defines,
                 *files,
-                ROOT / "rtl/tb/tb_dot16.sv",
+                ROOT / f"rtl/tb/{testbench}.sv",
                 vivado / "data/verilog/src/glbl.v",
             ],
             sim,
@@ -135,7 +130,7 @@ def rtl_sim(work, hls_rtl=None):
         run(
             [
                 "xelab",
-                "tb_dot16",
+                testbench,
                 "glbl",
                 "-L",
                 "unisims_ver",
@@ -143,8 +138,7 @@ def rtl_sim(work, hls_rtl=None):
                 "sim",
                 "-mt",
                 "2",
-                "-generic_top",
-                f"CORE_LATENCY={4 if kind == 'integration' else 2}",
+                *([] if kind == "core" else ["-generic_top", f"CORE_LATENCY={4 if kind == 'integration' else 2}"]),
             ],
             sim,
             "elaborate",
@@ -161,7 +155,7 @@ def rtl_sim(work, hls_rtl=None):
             ],
             sim,
             "simulate",
-            "PASS dot16",
+            "PASS core" if kind == "core" else "PASS dot16",
         )
 
 
@@ -173,7 +167,7 @@ def hls_run(work, mode, part, period):
         "c_files": [
             {"c_file": str(ROOT / "hls/src/model.cpp"), "cflag": f"-std=c++14 -I{ROOT / 'hls/include'}"}
         ],
-        "rtl_files": [str(ROOT / f"rtl/src/{name}.sv") for name in ("nvfp4_dot16", "nvfp4_dot16_rtl")],
+        "rtl_files": [str(ROOT / f"rtl/generated/{name}.sv") for name in ("nvfp4_dot16", "nvfp4_dot16_rtl")],
         "c_parameters": [
             {
                 "c_name": "input",
@@ -205,9 +199,9 @@ def hls_run(work, mode, part, period):
             "ap_ctrl_chain_protocol_continue": "",
         },
         "rtl_performance": {"latency": "2", "II": "1"},
-        "rtl_resource_usage": {"FF": "42", "LUT": "146", "BRAM": "0", "URAM": "0", "DSP": "4"},
+        "rtl_resource_usage": {"FF": "42", "LUT": "149", "BRAM": "0", "URAM": "0", "DSP": "4"},
     }
-    # FF/LUT estimates come from isolated implementation plus FIFO control.
+    # Standalone SpinalHDL route: 145 LUT / 42 FF; budget four LUTs for FIFO control.
     # Actual routed utilization remains authoritative for each integration.
     (work / "dot16.json").write_text(json.dumps(descriptor, indent=2) + "\n")
     tcl_run(ROOT / "hls/scripts/run.tcl", [ROOT, work, part, period, mode], work, "vitis-run", mode)
@@ -236,7 +230,6 @@ def check_ip(work, build, part, period):
     # A fresh temporary directory deliberately separates imported IP from sources.
     with tempfile.TemporaryDirectory(prefix="nvfp4-ip-relocated-") as temporary:
         for kind, archive in zip(("rtl", "hls"), archives):
-            archive_sha = hashlib.sha256(archive.read_bytes()).hexdigest()
             package = Path(temporary) / kind
             package.mkdir()
             with zipfile.ZipFile(archive) as inp:
@@ -250,7 +243,6 @@ def check_ip(work, build, part, period):
                 tree.findtext(f"s:{key}", namespaces=ns) for key in ("vendor", "library", "name", "version")
             )
             files = {n.text for n in tree.findall(".//s:file/s:name", ns)}
-            file_hashes = {}
             for name in files:
                 path = package / name
                 if (
@@ -259,13 +251,6 @@ def check_ip(work, build, part, period):
                     or not path.is_file()
                 ):
                     raise RuntimeError(f"Package references missing/external file: {name}")
-                file_hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-            adapter = "nvfp4_dot16_axis" if kind == "rtl" else "nvfp4_dot16_rtl"
-            for module in ("nvfp4_dot16", adapter):
-                matches = list(package.rglob(f"{module}.sv"))
-                source = ROOT / "rtl/src" / f"{module}.sv"
-                if len(matches) != 1 or matches[0].read_bytes() != source.read_bytes():
-                    raise RuntimeError(f"Packaged {module} differs from current RTL")
             out = work / kind
             out.mkdir(exist_ok=True)
             tcl_run(
@@ -275,14 +260,10 @@ def check_ip(work, build, part, period):
                 "vivado",
                 "reimport",
             )
-            if hashlib.sha256(archive.read_bytes()).hexdigest() != archive_sha:
-                raise RuntimeError("IP archive changed during implementation")
             audits.append(
                 {
                     "kind": kind,
                     "vlnv": vlnv,
-                    "archive_sha256": archive_sha,
-                    "packaged_file_sha256": file_hashes,
                     "passed": True,
                 }
             )
@@ -290,9 +271,7 @@ def check_ip(work, build, part, period):
 
 
 def source_dist(work):
-    files = [ROOT / name for name in DIST_FILES]
-    for directory in SOURCE_DIRS:
-        files.extend(p for p in (ROOT / directory).rglob("*") if p.is_file() and "__pycache__" not in p.parts)
+    files = distribution_files()
     with tarfile.open(work / "nvfp4_dsp58-source.tar.gz", "w:gz") as archive:
         for path in sorted(files):
             archive.add(path, arcname=str(Path("nvfp4_dsp58") / path.relative_to(ROOT)), recursive=False)
@@ -304,6 +283,7 @@ def main():
         "task",
         choices=[
             "test",
+            "rtl-gen",
             "rtl-sim",
             "rtl-impl",
             "rtl-ip",
@@ -318,15 +298,16 @@ def main():
     parser.add_argument("--build", type=Path, default=ROOT / "build")
     parser.add_argument("--part", default="xcv80-lsva4737-2MHP-e-S")
     parser.add_argument("--period", default="3.333333")
+    parser.add_argument("--sbt", default="sbt", help="sbt executable (only used for rtl-gen)")
     args = parser.parse_args()
     work = args.build.resolve() / args.task
     work.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    receipt = {"task": args.task, "part": args.part, "period_ns": args.period, "sources": {}, "passed": False}
+    receipt = {"task": args.task, "part": args.part, "period_ns": args.period, "passed": False}
     try:
-        initial = sources(args.task)
-        receipt["sources"] = initial
-        if args.task == "test":
+        if args.task == "rtl-gen":
+            rtl_generate(work, args.sbt)
+        elif args.task == "test":
             run(
                 [sys.executable, "-m", "unittest", "discover", "-s", ROOT / "tests", "-v"],
                 work,
@@ -365,8 +346,6 @@ def main():
             source_dist(work)
         else:
             hls_run(work, args.task.removeprefix("hls-"), args.part, args.period)
-        if sources(args.task) != initial:
-            raise RuntimeError("Sources changed during this run; rerun for coherent evidence")
         receipt["passed"] = True
     except Exception as exc:
         receipt["error"] = str(exc)

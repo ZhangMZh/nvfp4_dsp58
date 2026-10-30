@@ -5,7 +5,7 @@ set output [file normalize $output]
 file mkdir $output
 set_param general.maxThreads 4
 create_project -in_memory -part $part
-read_verilog -sv [glob $root/rtl/src/*.sv]
+read_verilog -sv [glob $root/rtl/generated/*.sv]
 set fixture [expr {$scope eq "integration"}]
 set top nvfp4_dot16_axis
 if {$fixture} {

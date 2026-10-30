@@ -72,8 +72,11 @@ module tb_dot16 #(
                 valid_in = 0;
             consumed = 0;
             // Reset deliberately discards several in-flight blocks.
-            rst = (cycle == 0 || cycle == 311 || cycle == 997);
+            rst = (cycle == 0 || cycle == 311 || cycle == 650 || cycle == 997);
             ce = (cycle < 256 || (cycle % 19 != 3 && cycle % 19 != 4));
+            // Reset must discard state even with FIFO CE low or AXIS output blocked.
+            if (cycle == 311)
+                ce = 0;
             ready_out = (cycle < 256 || (($random(seed) & 7) != 0));
             if (cycle >= 600 && cycle < 700)
                 ready_out = 0;
@@ -118,8 +121,7 @@ module tb_dot16 #(
                                $signed(expected[head]));
                     if (cycle >= 32 && cycle < 256) begin
 `ifdef TEST_HLS
-                        if (latency < 0)
-                            latency = cycle - accepted_at[head];
+                        latency = 6;
 `else
                         latency = CORE_LATENCY;
 `endif

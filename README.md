@@ -54,6 +54,26 @@ Its measured unstalled external latency is six clocks, with II=1.
 Reference tests require Python 3.9+ and Make. Hardware flows require a configured,
 licensed Vivado/Vitis 2025.1 environment, GCC and UNISIM.
 
+The maintained hardware source is SpinalHDL under `rtl/spinal/src/`. The three generated
+SystemVerilog modules are checked in under `rtl/generated/`, so simulation,
+implementation and IP consumers do not need Scala. Edit the Scala sources and
+run `rtl-gen` to update the generated RTL before building.
+
+Generation requires JDK 21 and sbt 1.10.2. The project pins Scala 2.13.14 and
+SpinalHDL 1.15.0 (core, library and compiler plugin); sbt downloads dependencies
+on first use. Install tools and configure any required network proxy externally.
+There is no separate smoke-test project or Verilator requirement.
+
+```sh
+make rtl-gen SBT=/path/to/sbt    # update rtl/generated/*.sv
+```
+
+`SBT` defaults to `sbt` on PATH. Generation logs stream to the terminal and are
+also saved under `BUILD_DIR`. No timestamp, local Git revision or absolute source
+path is embedded in the generated HDL. The generator preserves the core's signed
+13-bit public output declaration, which Spinal otherwise emits as an unsigned
+vector with signed casts inside the module.
+
 ```sh
 make test
 make rtl-sim rtl-impl
@@ -65,13 +85,18 @@ make dist
 
 Defaults: `BUILD_DIR=build`, `PART=xcv80-lsva4737-2MHP-e-S`,
 `CLOCK_NS=3.333333`. Use separate build directories per configuration; do not run
-the same target concurrently in one directory. `hls-cosim` includes C simulation,
+the same target concurrently in one directory. Run only one `rtl-gen` at a time,
+and wait for it to finish before simulation, implementation or packaging.
+`hls-cosim` includes C simulation,
 synthesis, random-stall co-simulation and independent generated-AXIS simulation.
 `hls-csim` and `hls-synth` are also available.
 
 12,560 golden blocks cover every code pair at every position, signed zero,
 extremes, cancellation and seeded random inputs. Scoreboards check reset, stalls,
 bubbles, draining, latency and II=1; FIFO tests also pause CE.
+Direct-core tests additionally change inputs while CE is low and assert reset
+with CE low. Interface tests reset during backpressure, and the HLS AXIS test
+requires the six-cycle integration latency explicitly.
 
 `rtl-impl` routes two designs concurrently: `internal/` contains the standalone
 core; `integration/` adds a two-slot registered FIFO at each AXIS boundary. The
@@ -80,33 +105,38 @@ ports, including the output sum. Standalone OOC excludes external paths and cann
 by itself establish output-adder timing. Both flows use 100 ps setup/hold
 uncertainty. Board-level timing remains outside these checks.
 
-Validated on 2026-10-29 with Vivado/Vitis 2025.1, the default V80 part and 300 MHz.
+Validated on 2026-10-30 with Vivado/Vitis 2025.1, the default V80 part and 300 MHz.
 Routed utilization and measured unstalled handshake latency (all II=1):
 
 | Design | DSP58 | LUT | FF | Setup slack | Hold slack | Clocks |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Native RTL OOC | 4 | 142 | 42 | +1.663 ns | +0.090 ns | 2 |
-| RTL + boundary FIFOs | 4 | 238 | 338 | +0.842 ns | +0.078 ns | 4 |
+| SpinalHDL OOC | 4 | 145 | 42 | +1.561 ns | +0.114 ns | 2 |
+| SpinalHDL + boundary FIFOs | 4 | 238 | 338 | +0.921 ns | +0.045 ns | 4 |
 
-The second row includes both fixture FIFOs and covers the output-adder path.
+The FIFO rows include both fixture FIFOs and cover the output-adder path.
 Functional simulation, HLS C/RTL co-simulation and both physical checks passed.
-Reports and source-hash receipts are under `build/production-tree2/`.
+These hardware results were collected before the source-directory reorganization;
+reports remain under `build/spinal-acceptance/`.
 
 ## Layout and packages
 
-- `rtl/{src,tb,scripts}`: production RTL, scoreboard/fixture, Vivado flows.
+- `rtl/spinal/src/`: maintained hardware descriptions; sbt configuration is in `rtl/spinal/`.
+- `rtl/generated/`: generated SystemVerilog; do not edit by hand.
+- `rtl/tb/`: independent scoreboards and integration fixture.
+- `rtl/scripts/`: Vivado implementation and IP packaging flows.
 - `hls/{include,src,tb,scripts}`: C++ API/model/wrapper and Vitis flows.
 - `tests/`, `scripts/`: independent integer oracle, unit tests and build runner.
-- `build/`: generated reports, logs, artifacts and source-hash receipts.
+- `build/`: generated reports, logs, artifacts and run results.
 
 IP archives are `rtl-ip/nvfp4_dot16_axis.zip` and
 `hls-ip/project/solution/impl/ip/*.zip` under
-`BUILD_DIR`. `ip-check` relocates both packages, verifies file references and RTL
-hashes, then imports each through Vivado IP Catalog and checks its structure and
+`BUILD_DIR`. `ip-check` relocates both packages, verifies file references,
+then imports each through Vivado IP Catalog and checks its structure and
 internal OOC timing. Core interface timing is checked by `rtl-impl`.
 HLS export applies a process-local workaround for 2025.1 without changing
-the installed tools. `dist/nvfp4_dsp58-source.tar.gz` contains the main project sources;
-generated artifacts and AMD libraries are excluded.
+the installed tools. `dist/nvfp4_dsp58-source.tar.gz` contains the Scala sources,
+build configuration, generated RTL and other main project sources;
+build outputs, Scala/IDE caches and AMD libraries are excluded.
 
 ## License
 
