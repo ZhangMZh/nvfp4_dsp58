@@ -3,6 +3,11 @@
 Exact 16-element E2M1 dot product, with optional E4M3 block scaling. Global scaling
 and cross-block accumulation remain external. Both modes support II=1 and backpressure.
 
+## Design
+
+- **Exact integer mapping:** Decode each NVFP4 E2M1 value `x` as the signed integer `q = 2*x`, with magnitudes `{0, 1, 2, 3, 4, 6, 8, 12}`. The unscaled output is `Q = sum(q_a*q_b)`, so the E2M1 dot product is exactly `Q/4`.
+- **Four DSP58s for 16 products:** DSP58 provides a native three-product sum mode that DSP48E2 lack; see [AMD's architecture comparison](https://docs.amd.com/r/en-US/am004-versal-dsp-engine/Differences-from-Previous-Generations). Each group of four uses the DSP58 INT8 dot-product mode for three products; a LUT computes the fourth and adds it through `C/CARRYIN`. A fabric adder tree combines the four group sums. 
+
 ## Interfaces
 
 | Unscaled module/function | Scaled module/function | Role |
