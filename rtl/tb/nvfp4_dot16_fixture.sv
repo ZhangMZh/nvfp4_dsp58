@@ -46,23 +46,30 @@ module nvfp4_dot16_fifo2 #(
     end
 endmodule
 
-// Synthesizable integration fixture: FIFO -> two-cycle core -> FIFO.
+// Synthesizable integration fixture: FIFO -> selected-mode core -> FIFO.
 // Both FIFOs add one unstalled handshake cycle; core latency is unchanged.
-module nvfp4_dot16_fixture (
+`ifdef BLOCK_SCALING
+module nvfp4_scaled_dot16_fixture #(
+    parameter integer INPUT_WIDTH = 144, OUTPUT_WIDTH = 64
+`else
+module nvfp4_dot16_fixture #(
+    parameter integer INPUT_WIDTH = 128, OUTPUT_WIDTH = 16
+`endif
+) (
     input wire ap_clk,
     input wire ap_rst,
-    input wire [127:0] s_axis_tdata,
+    input wire [INPUT_WIDTH-1:0] s_axis_tdata,
     input wire s_axis_tvalid,
     output wire s_axis_tready,
-    output wire [15:0] m_axis_tdata,
+    output wire [OUTPUT_WIDTH-1:0] m_axis_tdata,
     output wire m_axis_tvalid,
     input wire m_axis_tready
 );
-    wire [127:0] core_input;
+    wire [INPUT_WIDTH-1:0] core_input;
     wire input_valid, input_ready;
-    wire [15:0] core_output;
+    wire [OUTPUT_WIDTH-1:0] core_output;
     wire output_valid, output_ready;
-    (* keep_hierarchy = "yes" *) nvfp4_dot16_fifo2 #(.WIDTH(128)) upstream (
+    (* keep_hierarchy = "yes" *) nvfp4_dot16_fifo2 #(.WIDTH(INPUT_WIDTH)) upstream (
         .clk(ap_clk),
         .rst(ap_rst),
         .s_data(s_axis_tdata),
@@ -72,7 +79,11 @@ module nvfp4_dot16_fixture (
         .m_valid(input_valid),
         .m_ready(input_ready)
     );
+`ifdef BLOCK_SCALING
+    (* keep_hierarchy = "yes" *) nvfp4_scaled_dot16_axis dut (
+`else
     (* keep_hierarchy = "yes" *) nvfp4_dot16_axis dut (
+`endif
         .ap_clk(ap_clk),
         .ap_rst(ap_rst),
         .s_axis_tdata(core_input),
@@ -82,7 +93,7 @@ module nvfp4_dot16_fixture (
         .m_axis_tvalid(output_valid),
         .m_axis_tready(output_ready)
     );
-    (* keep_hierarchy = "yes" *) nvfp4_dot16_fifo2 #(.WIDTH(16)) downstream (
+    (* keep_hierarchy = "yes" *) nvfp4_dot16_fifo2 #(.WIDTH(OUTPUT_WIDTH)) downstream (
         .clk(ap_clk),
         .rst(ap_rst),
         .s_data(core_output),

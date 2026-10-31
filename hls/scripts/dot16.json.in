@@ -1,12 +1,12 @@
 {
-    "c_function_name": "nvfp4_dot16_rtl",
-    "rtl_top_module_name": "nvfp4_dot16_rtl",
+    "c_function_name": "@RTL_FAMILY@_rtl",
+    "rtl_top_module_name": "@RTL_FAMILY@_rtl",
     "c_files": [
-        {"c_file": "@ROOT@/hls/src/model.cpp", "cflag": "-std=c++14 -I@ROOT@/hls/include"}
+        {"c_file": "@ROOT@/hls/src/model.cpp", "cflag": "-std=c++14 -I@ROOT@/hls/include @SCALING_CFLAG@"}
     ],
     "rtl_files": [
-        "@ROOT@/rtl/generated/nvfp4_dot16.sv",
-        "@ROOT@/rtl/generated/nvfp4_dot16_rtl.sv"
+        "@ROOT@/rtl/generated/@RTL_FAMILY@.sv",
+        "@ROOT@/rtl/generated/@RTL_FAMILY@_rtl.sv"
     ],
     "c_parameters": [
         {
@@ -38,6 +38,6 @@
         "ap_ctrl_chain_protocol_done": "",
         "ap_ctrl_chain_protocol_continue": ""
     },
-    "rtl_performance": {"latency": "2", "II": "1"},
-    "rtl_resource_usage": {"FF": "42", "LUT": "149", "BRAM": "0", "URAM": "0", "DSP": "4"}
+    "rtl_performance": {"latency": "@CORE_LATENCY@", "II": "1"},
+    "rtl_resource_usage": {"FF": "@CORE_FF@", "LUT": "@FIFO_LUT@", "BRAM": "0", "URAM": "0", "DSP": "@DSP_COUNT@"}
 }

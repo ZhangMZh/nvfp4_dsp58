@@ -3,13 +3,14 @@ cmake_minimum_required(VERSION 3.20)
 project(nvfp4_dsp58 LANGUAGES NONE)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
-    message(FATAL_ERROR "Use an out-of-source build: cmake -S . -B build/cmake")
+    message(FATAL_ERROR "Use an out-of-source build: cmake -S . -B build")
 endif()
 
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(BUILD "${CMAKE_CURRENT_BINARY_DIR}")
 set(PART "xcv80-lsva4737-2MHP-e-S" CACHE STRING "AMD device part")
 set(CLOCK_NS "3.333333" CACHE STRING "Clock period in nanoseconds")
+option(BLOCK_SCALING "Enable exact E4M3 block scaling in dot16" OFF)
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 find_program(SBT NAMES sbt)
 find_program(VIVADO NAMES vivado HINTS "$ENV{XILINX_VIVADO}/bin")
@@ -29,18 +30,21 @@ endforeach()
 set(CONFIG "${BUILD}/config.cmake")
 configure_file(cmake/Config.cmake.in "${CONFIG}" @ONLY)
 set(VECTORS "${BUILD}/tests/vectors.mem")
+set(reference_options)
+if(BLOCK_SCALING)
+    list(APPEND reference_options --block-scaling)
+endif()
 add_custom_command(OUTPUT "${VECTORS}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${BUILD}/tests"
-    COMMAND "${Python3_EXECUTABLE}" "${ROOT}/tests/reference.py" "${VECTORS}"
-    DEPENDS "${ROOT}/tests/reference.py"
+    COMMAND "${Python3_EXECUTABLE}" -B "${ROOT}/tests/reference.py" "${VECTORS}" ${reference_options}
+    DEPENDS "${ROOT}/tests/reference.py" "${CONFIG}"
     COMMENT "Generating golden vectors"
     VERBATIM)
 add_custom_target(vectors DEPENDS "${VECTORS}")
 
 enable_testing()
-add_test(NAME reference COMMAND "${Python3_EXECUTABLE}" -m unittest
-    discover -s "${ROOT}/tests" -p test_reference.py -v)
-set_tests_properties(reference PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+add_test(NAME reference COMMAND "${Python3_EXECUTABLE}" -B
+    "${ROOT}/tests/test_reference.py" ${reference_options} -v)
 
 add_subdirectory(rtl)
 add_subdirectory(hls)

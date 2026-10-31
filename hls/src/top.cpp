@@ -15,7 +15,11 @@ void egress(hls::stream<nvfp4::dot_result> &results, hls::stream<nvfp4::dot_resu
 }
 } // namespace
 
+#ifdef BLOCK_SCALING
+void nvfp4_scaled_dot16_hls(hls::stream<nvfp4::block_pair> &input, hls::stream<nvfp4::dot_result> &output) {
+#else
 void nvfp4_dot16_hls(hls::stream<nvfp4::block_pair> &input, hls::stream<nvfp4::dot_result> &output) {
+#endif
 #pragma HLS INTERFACE axis port = input
 #pragma HLS INTERFACE axis port = output
 #pragma HLS INTERFACE ap_ctrl_none port = return
@@ -26,6 +30,10 @@ void nvfp4_dot16_hls(hls::stream<nvfp4::block_pair> &input, hls::stream<nvfp4::d
 #pragma HLS STREAM variable = packets depth = 2
 #pragma HLS STREAM variable = results depth = 2
     ingress(input, packets);
+#ifdef BLOCK_SCALING
+    nvfp4_scaled_dot16_rtl(packets, results);
+#else
     nvfp4_dot16_rtl(packets, results);
+#endif
     egress(results, output);
 }

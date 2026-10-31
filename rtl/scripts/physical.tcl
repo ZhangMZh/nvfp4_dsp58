@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Shared OOC implementation and physical acceptance gates, after synthesis.
-proc dot16_implement {output period} {
+proc dot16_implement {output period {scaled 0}} {
     create_clock -name ap_clk -period $period [get_ports ap_clk]
     set_clock_uncertainty -setup 0.1 [get_clocks ap_clk]
     set_clock_uncertainty -hold 0.1 [get_clocks ap_clk]
@@ -31,7 +31,7 @@ proc dot16_implement {output period} {
     if {$routable == 0 || $routed != $routable || $errors != 0} {
         error "Incomplete routing"
     }
-    dot16_audit $output $period
+    dot16_audit $output $period $scaled
 }
 
 proc dot16_constant {cell port width} {
@@ -53,10 +53,10 @@ proc dot16_constant {cell port width} {
     return $value
 }
 
-proc dot16_audit {output period} {
+proc dot16_audit {output period {scaled 0}} {
     set dsps [lsort [get_cells -hier -filter {REF_NAME == DSP58}]]
-    if {[llength $dsps] != 4} {
-        error "Expected exactly four DSP58s"
+    if {[llength $dsps] != 4 + $scaled} {
+        error "Expected [expr {4 + $scaled}] DSP58s"
     }
     if {[llength [get_cells -quiet -hier -filter {REF_NAME == DSPFP32 || REF_NAME =~ RAMB* || REF_NAME =~ URAM*}]]} {
         error "Unexpected extra DSP or block memory"
@@ -66,7 +66,15 @@ proc dot16_audit {output period} {
     }
     set structure [open $output/structure.tsv w]
     set index 0
+    set dot3_count 0
+    set multiply_count 0
     foreach cell $dsps {
+        if {$scaled && [get_property DSP_MODE $cell] eq "INT24"} {
+            incr multiply_count
+            puts $structure "multiply\t$cell\t[get_property LOC $cell]\tINT24"
+            continue
+        }
+        incr dot3_count
         foreach {key value} {
             DSP_MODE INT8 USE_SIMD ONE58 AREG 1 BREG 1 CREG 0
             CARRYINREG 0 MREG 0 PREG 1 OPMODEREG 0
@@ -89,6 +97,9 @@ proc dot16_audit {output period} {
         incr index
     }
     close $structure
+    if {$dot3_count != 4 || $multiply_count != $scaled} {
+        error "Expected four INT8 Dot3 units and $scaled INT24 multipliers"
+    }
     set metrics [open $output/metrics.tsv w]
     puts $metrics "period_ns\t$period"
     puts $metrics "DSP58\t[llength $dsps]"

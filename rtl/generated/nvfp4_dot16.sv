@@ -455,7 +455,6 @@ module nvfp4_dot16 (
     .RSTALLCARRYIN (rst                           ), //i
     .ASYNC_RST     (1'b0                          )  //i
   );
-  assign out_valid = pipeline_valid_pipe[1];
   assign pipeline_groups_0_a = in_data[15 : 0];
   assign pipeline_groups_0_b = in_data[79 : 64];
   assign switch_Dot16_l12 = pipeline_groups_0_a[3 : 0];
@@ -2656,6 +2655,7 @@ module nvfp4_dot16 (
   assign pipeline_pair_right = ($signed(_zz_pipeline_pair_right) + $signed(_zz_pipeline_pair_right_1));
   assign pipeline_total = ($signed(_zz_pipeline_total) + $signed(_zz_pipeline_total_1));
   assign out_data = pipeline_total;
+  assign out_valid = pipeline_valid_pipe[1];
   always @(posedge clk) begin
     if(rst) begin
       pipeline_valid_pipe <= 2'b00;

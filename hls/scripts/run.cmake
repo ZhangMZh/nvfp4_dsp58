@@ -4,7 +4,7 @@ require_tool(VITIS_RUN)
 set(WORK "${BUILD}/hls-${MODE}")
 prepare_work("${WORK}")
 configure_file("${VECTORS}" "${WORK}/vectors.mem" COPYONLY)
-configure_file("${BUILD}/hls/dot16.json" "${WORK}/dot16.json" COPYONLY)
+configure_file("${ROOT}/hls/scripts/dot16.json.in" "${WORK}/${RTL_FAMILY}.json" @ONLY)
 run_tool("${WORK}" "${MODE}" DOT16_FLOW_PASS
     "${VITIS_RUN}" --mode hls --tcl "${BUILD}/hls/${MODE}.tcl")
 if(MODE STREQUAL "cosim")

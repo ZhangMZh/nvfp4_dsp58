@@ -6,7 +6,10 @@ import java.nio.file.{Files, Path, Paths}
 
 object Generate {
     def main(args: Array[String]): Unit = {
-        require(args.length == 1, "Usage: nvfp4.Generate OUTPUT_DIRECTORY")
+        require(args.length == 1 || (args.length == 2 && args(1) == "--block-scaling"),
+            "Usage: nvfp4.Generate OUTPUT_DIRECTORY [--block-scaling]")
+        val block_scaling = args.length == 2
+        val family = if (block_scaling) "nvfp4_scaled_dot16" else "nvfp4_dot16"
         val output = Paths.get(args(0)).toAbsolutePath
         val header = "SPDX-License-Identifier: MIT\nGenerated from rtl/spinal/; edit Scala and run cmake --build <build-dir> --target rtl-gen."
         def config(directory: Path) = SpinalConfig(
@@ -17,25 +20,21 @@ object Generate {
             genLineComments = false,
             rtlHeader = header
         )
-        // Elaborate each public wrapper and collect the three public modules.
-        config(output.resolve("axis")).generateSystemVerilog(new Dot16Axis)
-        config(output.resolve("fifo")).generateSystemVerilog(new Dot16Fifo)
-        val core = "nvfp4_dot16.sv"
-        Seq("axis" -> core, "axis" -> "nvfp4_dot16_axis.sv", "fifo" -> "nvfp4_dot16_rtl.sv")
-            .foreach { case (directory, file) =>
-                Files.copy(output.resolve(directory).resolve(file), output.resolve(file),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        // Elaborate only the selected mode; each family has distinct module/file names.
+        config(output.resolve("axis")).generateSystemVerilog(new Dot16Axis(block_scaling))
+        config(output.resolve("fifo")).generateSystemVerilog(new Dot16Fifo(block_scaling))
+        Seq("axis" -> s"$family.sv", "axis" -> s"${family}_axis.sv",
+            "fifo" -> s"${family}_rtl.sv").foreach { case (wrapper, file) =>
+            var content = Files.readString(output.resolve(wrapper).resolve(file))
+            if (file == s"$family.sv") {
+                // Spinal uses explicit signed casts internally; preserve signed public ports.
+                val high = if (block_scaling) 47 else 12
+                val port = ("(?m)^(\\s*output\\s+wire\\s+)(\\[" + high + ":0\\]\\s+out_data\\b)").r
+                require(port.findAllIn(content).size == 1, "Unexpected core output declaration")
+                content = port.replaceFirstIn(content, "$1signed $2")
             }
-        // Spinal emits SInt as unsigned vectors with explicit signed casts internally.
-        // Preserve the existing signed public Verilog port for external consumers.
-        val core_path = output.resolve(core)
-        val core_text = Files.readString(core_path)
-        val signed_port = "(?m)^(\\s*output\\s+wire\\s+)(\\[12:0\\]\\s+out_data\\b)".r
-        require(signed_port.findAllIn(core_text).size == 1, "Unexpected core output declaration")
-        Files.writeString(core_path, signed_port.replaceFirstIn(core_text, "$1signed $2"))
-        Seq(core, "nvfp4_dot16_axis.sv", "nvfp4_dot16_rtl.sv").foreach { file =>
-            val path = output.resolve(file)
-            Files.writeString(path, Files.readString(path).linesIterator.map(_.stripTrailing).mkString("", "\n", "\n"))
+            Files.writeString(output.resolve(file),
+                content.linesIterator.map(_.stripTrailing).mkString("", "\n", "\n"))
         }
         println(s"Generation runtime: Java ${System.getProperty("java.version")}, Scala ${util.Properties.versionNumberString}")
         println("DOT16_GENERATION_PASS")

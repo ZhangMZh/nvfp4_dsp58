@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
-# CMake supplies argv: root work part period mode.
-lassign $argv root work part period mode
+# CMake supplies argv: root work part period mode scaled.
+lassign $argv root work part period mode scaled
+if {$scaled eq ""} { set scaled 0 }
 set root [file normalize $root]
 set work [file normalize $work]
 if {$mode ni {csim synth cosim ip}} {
@@ -15,10 +16,12 @@ if {[file exists $crt]} {
     set ::env(LIBRARY_PATH) $libdir
 }
 open_project -reset $work/project
-set_top nvfp4_dot16_hls
+set family [expr {$scaled ? "nvfp4_scaled_dot16" : "nvfp4_dot16"}]
+set_top ${family}_hls
 set flags "-std=c++14 -I$root/hls/include"
+if {$scaled} { append flags " -DBLOCK_SCALING=1" }
 add_files $root/hls/src/top.cpp -cflags $flags
-add_files -blackbox $work/dot16.json
+add_files -blackbox $work/${family}.json
 add_files -tb $root/hls/tb/test_dot16.cpp -cflags $flags
 add_files -tb $work/vectors.mem
 open_solution -reset solution -flow_target vivado
