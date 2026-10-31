@@ -11,7 +11,7 @@ module nvfp4_dot16 (
   input  wire          in_valid,
   input  wire [127:0]  in_data,
   output wire          out_valid,
-  output wire signed [12:0]   out_data
+  output wire [12:0]   out_data
 );
 
   wire       [33:0]   pipeline_groups_0_dsp_A;

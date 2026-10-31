@@ -25,14 +25,7 @@ object Generate {
         config(output.resolve("fifo")).generateSystemVerilog(new Dot16Fifo(block_scaling))
         Seq("axis" -> s"$family.sv", "axis" -> s"${family}_axis.sv",
             "fifo" -> s"${family}_rtl.sv").foreach { case (wrapper, file) =>
-            var content = Files.readString(output.resolve(wrapper).resolve(file))
-            if (file == s"$family.sv") {
-                // Spinal uses explicit signed casts internally; preserve signed public ports.
-                val high = if (block_scaling) 47 else 12
-                val port = ("(?m)^(\\s*output\\s+wire\\s+)(\\[" + high + ":0\\]\\s+out_data\\b)").r
-                require(port.findAllIn(content).size == 1, "Unexpected core output declaration")
-                content = port.replaceFirstIn(content, "$1signed $2")
-            }
+            val content = Files.readString(output.resolve(wrapper).resolve(file))
             Files.writeString(output.resolve(file),
                 content.linesIterator.map(_.stripTrailing).mkString("", "\n", "\n"))
         }

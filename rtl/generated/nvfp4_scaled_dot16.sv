@@ -11,7 +11,7 @@ module nvfp4_scaled_dot16 (
   input  wire          in_valid,
   input  wire [143:0]  in_data,
   output wire          out_valid,
-  output wire signed [47:0]   out_data,
+  output wire [47:0]   out_data,
   output wire          out_invalid
 );
 
